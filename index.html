@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>California Time Clock</title>
+    <title>Cupertino Clock (Synced)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -28,7 +28,7 @@
             border-radius: 24px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
             text-align: center;
-            width: 320px;
+            width: 340px;
         }
         h1 {
             font-size: 1.1rem;
@@ -51,21 +51,48 @@
         .tz {
             font-size: 0.85rem;
             color: #64748b;
+            margin-bottom: 8px;
+        }
+        .status {
+            font-size: 0.75rem;
+            color: #10b981;
         }
     </style>
 </head>
 <body>
 
     <div class="clock-card">
-        <h1>Cupertino, CA (PST/PDT)</h1>
-        <div id="time" class="time">00:00:00</div>
-        <div id="date" class="date">Loading...</div>
-        <div id="tz" class="tz">Loading...</div>
+        <h1>Cupertino, CA</h1>
+        <div id="time" class="time">Syncing...</div>
+        <div id="date" class="date">Fetching internet time...</div>
+        <div id="tz" class="tz">Time Zone: America/Los_Angeles</div>
+        <div id="status" class="status">Connecting to server...</div>
     </div>
 
     <script>
+        let serverTimeOffset = 0;
+
+        async function fetchInternetTime() {
+            try {
+                const response = await fetch('https://worldtimeapi.org/api/timezone/America/Los_Angeles');
+                const data = await response.json();
+                
+                const serverTime = new Date(data.datetime).getTime();
+                const localTime = Date.now();
+                
+                // Calculate the difference between the internet time and your device time
+                serverTimeOffset = serverTime - localTime;
+                
+                document.getElementById('status').textContent = 'Synced with internet time';
+            } catch (error) {
+                document.getElementById('status').textContent = 'Using estimated sync';
+                document.getElementById('status').style.color = '#f59e0b';
+            }
+        }
+
         function updateClock() {
-            const now = new Date();
+            // Apply the internet time offset so it's accurate regardless of your iPad
+            const now = new Date(Date.now() + serverTimeOffset);
             
             const timeOptions = {
                 timeZone: 'America/Los_Angeles',
@@ -82,23 +109,19 @@
                 month: 'long',
                 day: 'numeric'
             };
-            
-            const tzOptions = {
-                timeZone: 'America/Los_Angeles',
-                timeZoneName: 'short'
-            };
 
             const timeString = new Intl.DateTimeFormat('en-US', timeOptions).format(now);
             const dateString = new Intl.DateTimeFormat('en-US', dateOptions).format(now);
-            
-            const parts = new Intl.DateTimeFormat('en-US', tzOptions).formatToParts(now);
-            const tzName = parts.find(p => p.type === 'timeZoneName')?.value || 'PT';
 
             document.getElementById('time').textContent = timeString;
             document.getElementById('date').textContent = dateString;
-            document.getElementById('tz').textContent = `Time Zone: ${tzName}`;
         }
 
+        // Fetch time immediately, then re-sync every 10 minutes
+        fetchInternetTime();
+        setInterval(fetchInternetTime, 10 * 60 * 1000);
+
+        // Update the visual clock every second using the synced time
         setInterval(updateClock, 1000);
         updateClock();
     </script>
