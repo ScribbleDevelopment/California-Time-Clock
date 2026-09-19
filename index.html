@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cupertino Clock (Synced)</title>
+    <title>Live Clock</title>
     <style>
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         body {
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
@@ -21,81 +20,99 @@
             color: #f8fafc;
         }
         .clock-card {
-            background: rgba(30, 41, 59, 0.75);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 30px;
-            border-radius: 24px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            background: rgba(30, 41, 59, 0.65);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 36px 30px;
+            border-radius: 28px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
             text-align: center;
-            width: 340px;
+            width: 360px;
         }
-        h1 {
-            font-size: 1.1rem;
+        .location {
+            font-size: 0.95rem;
+            font-weight: 600;
             color: #94a3b8;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
             text-transform: uppercase;
             letter-spacing: 2px;
         }
-        .time {
-            font-size: 2.2rem;
+        .time-box {
+            font-size: 2.5rem;
             font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 10px rgba(56, 189, 248, 0.3);
+        }
+        .zone-info {
+            font-size: 1rem;
             color: #38bdf8;
-            margin-bottom: 12px;
+            font-weight: 500;
+            margin-bottom: 18px;
         }
         .date {
-            font-size: 1rem;
+            font-size: 0.9rem;
             color: #cbd5e1;
-            margin-bottom: 6px;
-        }
-        .tz {
-            font-size: 0.85rem;
-            color: #64748b;
-            margin-bottom: 8px;
-        }
-        .status {
-            font-size: 0.75rem;
-            color: #10b981;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            padding-top: 16px;
         }
     </style>
 </head>
 <body>
 
     <div class="clock-card">
-        <h1>Cupertino, CA</h1>
-        <div id="time" class="time">Syncing...</div>
-        <div id="date" class="date">Fetching internet time...</div>
-        <div id="tz" class="tz">Time Zone: America/Los_Angeles</div>
-        <div id="status" class="status">Connecting to server...</div>
+        <div id="location" class="location">Locating...</div>
+        <div id="time" class="time-box">--:--:--</div>
+        <div id="zone-info" class="zone-info">(Loading Time)</div>
+        <div id="date" class="date">--</div>
     </div>
 
     <script>
         let serverTimeOffset = 0;
+        let userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-        async function fetchInternetTime() {
-            try {
-                const response = await fetch('https://worldtimeapi.org/api/timezone/America/Los_Angeles');
-                const data = await response.json();
-                
-                const serverTime = new Date(data.datetime).getTime();
-                const localTime = Date.now();
-                
-                // Calculate the difference between the internet time and your device time
-                serverTimeOffset = serverTime - localTime;
-                
-                document.getElementById('status').textContent = 'Synced with internet time';
-            } catch (error) {
-                document.getElementById('status').textContent = 'Using estimated sync';
-                document.getElementById('status').style.color = '#f59e0b';
+        async function initClock() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        try {
+                            const lat = position.coords.latitude;
+                            const lon = position.coords.longitude;
+                            const tzRes = await fetch(`https://timeapi.io/api/TimeZone/coordinate?latitude=${lat}&longitude=${lon}`);
+                            const tzData = await tzRes.json();
+                            if (tzData && tzData.timeZone) {
+                                userTimeZone = tzData.timeZone;
+                            }
+                        } catch (e) {}
+                        fetchInternetTime(userTimeZone);
+                    },
+                    () => {
+                        fetchInternetTime(userTimeZone);
+                    },
+                    { timeout: 8000 }
+                );
+            } else {
+                fetchInternetTime(userTimeZone);
             }
         }
 
+        async function fetchInternetTime(timeZone) {
+            try {
+                const response = await fetch(`https://worldtimeapi.org/api/timezone/${timeZone}`);
+                const data = await response.json();
+                const serverTime = new Date(data.datetime).getTime();
+                const localTime = Date.now();
+                serverTimeOffset = serverTime - localTime;
+            } catch (error) {}
+        }
+
         function updateClock() {
-            // Apply the internet time offset so it's accurate regardless of your iPad
             const now = new Date(Date.now() + serverTimeOffset);
             
             const timeOptions = {
-                timeZone: 'America/Los_Angeles',
+                timeZone: userTimeZone,
                 hour: '2-digit',
                 minute: '2-digit',
                 second: '2-digit',
@@ -103,25 +120,34 @@
             };
             
             const dateOptions = {
-                timeZone: 'America/Los_Angeles',
+                timeZone: userTimeZone,
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric'
             };
 
+            const tzOptions = {
+                timeZone: userTimeZone,
+                timeZoneName: 'short'
+            };
+
             const timeString = new Intl.DateTimeFormat('en-US', timeOptions).format(now);
             const dateString = new Intl.DateTimeFormat('en-US', dateOptions).format(now);
+            
+            const parts = new Intl.DateTimeFormat('en-US', tzOptions).formatToParts(now);
+            const tzName = parts.find(p => p.type === 'timeZoneName')?.value || userTimeZone;
 
+            // Clean up location display name from timezone string (e.g., "America/Los_Angeles" -> "Los Angeles")
+            const locationName = userTimeZone.split('/').pop().replace(/_/g, ' ');
+
+            document.getElementById('location').textContent = locationName;
             document.getElementById('time').textContent = timeString;
+            document.getElementById('zone-info').textContent = `(${tzName} Time)`;
             document.getElementById('date').textContent = dateString;
         }
 
-        // Fetch time immediately, then re-sync every 10 minutes
-        fetchInternetTime();
-        setInterval(fetchInternetTime, 10 * 60 * 1000);
-
-        // Update the visual clock every second using the synced time
+        initClock();
         setInterval(updateClock, 1000);
         updateClock();
     </script>
